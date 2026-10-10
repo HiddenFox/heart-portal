@@ -23,6 +23,8 @@ mod relay_client;
 mod single_instance;
 mod subagent;
 mod tools;
+#[cfg(not(any(windows, target_os = "macos")))]
+mod unix_service;
 mod upgrade;
 #[cfg(any(windows, target_os = "macos"))]
 mod user_installation;
@@ -322,7 +324,12 @@ async fn main() -> Result<()> {
         })
         .await;
         #[cfg(not(any(windows, target_os = "macos")))]
-        anyhow::bail!("Use your OS service manager for start/stop/status on this platform");
+        return unix_service::run(if matches!(&command, Some(Commands::Stop)) {
+            "stop"
+        } else {
+            "status"
+        })
+        .await;
     }
     #[cfg(windows)]
     if command.is_none() && std::env::var("HEART_PORTAL_SUPERVISED").as_deref() != Ok("1") {
