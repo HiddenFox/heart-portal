@@ -1,4 +1,4 @@
-//! Heart Portal — Being's gateway to the world.
+﻿//! Heart Portal — Being's gateway to the world.
 //!
 //! A lightweight MCP server with built-in tools (exec, file, web).
 //! Heart's MCP supervisor connects to Portal via TCP.
@@ -47,6 +47,19 @@ use crate::config::PortalConfig;
 use crate::protocol::{JsonRpcError, JsonRpcRequest, JsonRpcResponse, PORTAL_VERSION};
 use crate::tools::ToolHost;
 
+
+// Android bionic (arm64) rejects binaries whose TLS segment effective alignment
+// (p_align minus vaddr skew) is below 64. The musl/lld layout aligns TLS to 8/16
+// bytes by default and no post-link patch can fix the vaddr, so force the whole
+// TLS block to 64-byte alignment with a padded thread-local. Without this,
+// Android 10+ dies with "TLS segment is underaligned ... (skew 16)" before main.
+#[cfg(target_os = "linux")]
+#[repr(align(64))]
+struct TlsAlignPad([u8; 64]);
+#[cfg(target_os = "linux")]
+thread_local! {
+    static TLS_ALIGN_PAD: TlsAlignPad = const { TlsAlignPad([0u8; 64]) };
+}
 #[derive(Parser)]
 #[command(
     name = "heart-portal",
@@ -155,6 +168,8 @@ async fn main() -> Result<()> {
         anyhow::ensure!(!staged || user_installation::is_managed(&source)?,
             "Stop the legacy Portal, then launch the new download directly to migrate into ~/.heart-portal before upgrading");
     }
+    #[cfg(target_os = "linux")]
+    TLS_ALIGN_PAD.with(|pad| std::hint::black_box(pad as *const TlsAlignPad));
     let runtime_started = std::time::Instant::now();
     let cli = Cli::parse();
     if std::env::var_os("HEART_PORTAL_EXTERNAL_TOOL").is_some() {
