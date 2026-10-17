@@ -1,4 +1,4 @@
-﻿name: heart-portal Android NDK build
+name: heart-portal Android NDK build
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   RUST_TOOLCHAIN: 1.90.0
@@ -100,3 +100,11 @@ jobs:
             artifacts/libportal.so
             artifacts/libportal-report.txt
             artifacts/build.log
+
+      - name: Publish libportal.so to android-ci release
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view android-ci >/dev/null 2>&1 || gh release create android-ci --title "Android CI builds" --notes "Rolling builds from the android branch" --prerelease
+          gh release upload android-ci artifacts/libportal.so artifacts/libportal-report.txt --clobber
