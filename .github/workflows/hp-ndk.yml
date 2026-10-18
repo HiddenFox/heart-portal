@@ -51,38 +51,38 @@ jobs:
           echo "AR_AARCH64_LINUX_ANDROID=llvm-ar" >> "$GITHUB_ENV"
           echo "PATH configured with pinned NDK r27c toolchain: $ndk_bin"
 
-      - name: Build libportal.so with locked dependencies
+      - name: Build heart-portal-android with locked dependencies
         run: |
           set -o pipefail
           mkdir -p artifacts
           cargo build --locked --release --target "$TARGET" 2>&1 | tee artifacts/build.log
           "$NDK_BIN/llvm-strip" \
             "target/$TARGET/release/heart-portal" \
-            -o artifacts/libportal.so
+            -o artifacts/heart-portal-android
 
       - name: Verify ELF, architecture, interpreter, and hashes
         if: always()
         run: |
           mkdir -p artifacts
-          report=artifacts/libportal-report.txt
+          report=artifacts/heart-portal-android-report.txt
           {
             echo "repository=$(git rev-parse HEAD)"
             echo "rust_toolchain=$RUST_TOOLCHAIN"
             echo "target=$TARGET"
             echo "android_ndk=r27c ($ANDROID_NDK_VERSION)"
             echo "--- artifact ---"
-            if [[ -f artifacts/libportal.so ]]; then
-              file artifacts/libportal.so
-              readelf -h artifacts/libportal.so | grep -E 'Class:|Type:|Machine:'
-              readelf -lW artifacts/libportal.so | grep 'Requesting program interpreter'
-              readelf -dW artifacts/libportal.so | grep NEEDED || true
-              sha256sum artifacts/libportal.so
-              test "$(file -b artifacts/libportal.so | grep -c 'ELF 64-bit.*ARM aarch64')" -eq 1
-              readelf -h artifacts/libportal.so | grep -q 'Machine:.*AArch64'
-              readelf -lW artifacts/libportal.so | grep -q 'Requesting program interpreter: /system/bin/linker64'
+            if [[ -f artifacts/heart-portal-android ]]; then
+              file artifacts/heart-portal-android
+              readelf -h artifacts/heart-portal-android | grep -E 'Class:|Type:|Machine:'
+              readelf -lW artifacts/heart-portal-android | grep 'Requesting program interpreter'
+              readelf -dW artifacts/heart-portal-android | grep NEEDED || true
+              sha256sum artifacts/heart-portal-android
+              test "$(file -b artifacts/heart-portal-android | grep -c 'ELF 64-bit.*ARM aarch64')" -eq 1
+              readelf -h artifacts/heart-portal-android | grep -q 'Machine:.*AArch64'
+              readelf -lW artifacts/heart-portal-android | grep -q 'Requesting program interpreter: /system/bin/linker64'
               echo "verification=passed"
             else
-              echo "verification=not-run (libportal.so was not produced)"
+              echo "verification=not-run (heart-portal-android was not produced)"
               exit 1
             fi
             echo "--- build log tail ---"
@@ -90,21 +90,21 @@ jobs:
           } > "$report" 2>&1
           cat "$report"
 
-      - name: Upload libportal.so and build report
+      - name: Upload heart-portal-android and build report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: heart-portal-android-${{ github.sha }}
           if-no-files-found: warn
           path: |
-            artifacts/libportal.so
-            artifacts/libportal-report.txt
+            artifacts/heart-portal-android
+            artifacts/heart-portal-android-report.txt
             artifacts/build.log
 
-      - name: Publish libportal.so to android-ci release
+      - name: Publish heart-portal-android to android-ci release
         if: success()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view android-ci >/dev/null 2>&1 || gh release create android-ci --title "Android CI builds" --notes "Rolling builds from the android branch" --prerelease
-          gh release upload android-ci artifacts/libportal.so artifacts/libportal-report.txt --clobber
+          gh release upload android-ci artifacts/heart-portal-android artifacts/heart-portal-android-report.txt --clobber
