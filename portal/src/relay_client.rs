@@ -229,11 +229,9 @@ async fn run_one_session(
         let keepalive = socket2::TcpKeepalive::new()
             .with_time(Duration::from_secs(15))
             .with_interval(Duration::from_secs(5));
-        #[cfg(windows)]
-        let keepalive = keepalive.with_retries(3);
-        // probe count (TCP_KEEPCNT) is not exposed by socket2 on non-Windows;
-        // Linux/Android kernel default (9) applies, giving 15s + 9*5s before death verdict.
-        #[cfg(not(windows))]
+        // TCP_KEEPCNT (retries) is not exposed by socket2 0.5.x on windows targets;
+        // OS default probe count applies (Linux/Android 9, Win10 10). 15s idle + 5s interval via with_time/with_interval.
+        #[allow(unused_mut)]
         let keepalive = keepalive;
         if let Err(error) = sock_ref.set_tcp_keepalive(&keepalive) {
             warn!("relay TCP keepalive configuration failed: {error}");
