@@ -558,7 +558,42 @@ impl PiDaemon {
             .take()
             .ok_or_else(|| anyhow::anyhow!("pi stdin was not piped"))?;
         warn!("using the experimental stdio transport for pi; named-pipe support is pending");
-        PiClient::connect_io(stdout, stdin, "pi stdio".to_string(), ConnectPolicy::LENIENT).await
+        let client = PiClient::connect_io(
+            stdout,
+            stdin,
+            "pi stdio".to_string(),
+            ConnectPolicy::LENIENT,
+        )
+        .await;
+        // LENIENT accepts a bare pipe as an unverified client, which would
+        // turn a child that prints a message and exits into a phantom
+        // client. A dying child surfaces as EOF on the pipe before its
+        // exit status is observable via try_wait, so a single check races.
+        // Poll briefly; match the unix readiness loop: an exited child
+        // during startup is a failed start.
+        let mut exited = None;
+        if client.is_ok() {
+            for _ in 0..5 {
+                if let Some(status) = state
+                    .child
+                    .as_mut()
+                    .and_then(|c| c.try_wait().ok().flatten())
+                {
+                    exited = Some(status);
+                    break;
+                }
+                time::sleep(Duration::from_millis(50)).await;
+            }
+        }
+
+        if let (Ok(_), Some(status)) = (&client, exited) {
+            state.mode = TransportMode::Stdio;
+            anyhow::bail!(
+                "pi daemon exited during startup ({status}){}",
+                self.log_tail_suffix()
+            );
+        }
+        client
     }
 
     /// Ask the daemon to stop, then escalate. Adopted daemons get the request
@@ -1286,6 +1321,17 @@ mod tests {
 
     /// Short root: the daemon socket must fit in `sun_path` (~104 bytes) and
     /// macOS `$TMPDIR` alone is ~50.
+    fn test_shell() -> String {
+        #[cfg(windows)]
+        {
+            std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string())
+        }
+        #[cfg(not(windows))]
+        {
+            "/bin/sh".to_string()
+        }
+    }
+
     fn temp_dir(tag: &str) -> PathBuf {
         let id = uuid::Uuid::new_v4().simple().to_string();
         let dir = PathBuf::from("/tmp").join(format!("pd-{tag}-{}", &id[..8]));
@@ -1331,12 +1377,13 @@ mod tests {
 
     #[test]
     fn resolve_command_honors_an_explicit_absolute_path() {
+        let shell = test_shell();
         let resolved = PiDaemon::resolve_command(Some(&[
-            "/bin/sh".to_string(),
+            shell.clone(),
             "--flag".to_string(),
         ]))
         .unwrap();
-        assert_eq!(resolved, vec!["/bin/sh".to_string(), "--flag".to_string()]);
+        assert_eq!(resolved, vec![shell, "--flag".to_string()]);
     }
 
     #[test]
@@ -1349,8 +1396,16 @@ mod tests {
 
     #[test]
     fn resolve_command_searches_path_for_a_bare_name() {
-        let resolved = PiDaemon::resolve_command(Some(&["sh".to_string()])).unwrap();
-        assert!(resolved[0].ends_with("/sh"), "{resolved:?}");
+        let bare = if cfg!(windows) { "cmd.exe" } else { "sh" };
+        let resolved = PiDaemon::resolve_command(Some(&[bare.to_string()])).unwrap();
+        assert_eq!(
+            std::path::Path::new(&resolved[0])
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(|name| name.to_ascii_lowercase()),
+            Some(bare.to_ascii_lowercase()),
+            "{resolved:?}"
+        );
     }
 
     #[test]
@@ -1404,8 +1459,13 @@ mod tests {
     async fn spawn_failure_reports_the_log_tail_and_leaves_no_child() {
         let root = temp_dir("failstart");
         let d = PiDaemon::new(PiDaemonConfig {
-            command: vec!["/bin/sh".to_string(), "-c".to_string(),
-                          "echo 'pi: no provider configured' >&2; exit 3".to_string()],
+            command: if cfg!(windows) {
+                vec![test_shell(), "/C".to_string(),
+                      "echo pi: no provider configured 1>&2 & exit /B 3".to_string()]
+            } else {
+                vec![test_shell(), "-c".to_string(),
+                      "echo 'pi: no provider configured' >&2; exit 3".to_string()]
+            },
             state_dir: root.join("subagent"),
             workspace_root: PathBuf::from("/tmp"),
             env_passthrough: vec!["PATH".to_string()],
