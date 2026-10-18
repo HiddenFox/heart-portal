@@ -15,6 +15,8 @@ use std::io;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+#[cfg(unix)]
+use std::path::Path;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::sync::{broadcast, oneshot, Mutex as AsyncMutex, Notify};
 use tokio::time;
