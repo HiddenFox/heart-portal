@@ -25,7 +25,22 @@ jobs:
           $git = Join-Path $env:ProgramFiles 'Git\usr\bin\ls.exe'
           if (-not (Test-Path $git)) { throw 'Git for Windows is required for the PATH regression test.' }
       - name: Rust tests (includes native Windows exec regressions)
-        run: cargo test --locked
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked --no-fail-fast 2>&1 | tee "$RUNNER_TEMP/test-output.txt"
+          status=$?
+          out="$RUNNER_TEMP/test-output.txt"
+          if [ $status -ne 0 ]; then
+            # Surface failing test names / errors as check-run annotations:
+            # logs are login-gated, annotations are readable anonymously.
+            ann=$( { grep -E '^test .* \.\.\. FAILED' "$out" | head -8; grep -E '^thread .* panicked' "$out" | head -2; } )
+            if [ -z "$ann" ]; then
+              ann=$(grep -E '^error' "$out" | head -10)
+            fi
+            echo "$ann" | while IFS= read -r line; do [ -n "$line" ] && echo "::error::$line"; done
+            exit $status
+          fi
       - name: Build Portal
         run: cargo build --locked
       - name: Runtime status over TCP and relay
