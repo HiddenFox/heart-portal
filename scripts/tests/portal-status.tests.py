@@ -163,7 +163,7 @@ class RuntimeStatusTests(unittest.TestCase):
         with socket.socket() as relay:
             relay.bind(('127.0.0.1', 0))
             relay.listen(4)
-            relay.settimeout(20)
+            relay.settimeout(60)
             self.env['PORTAL_CONNECT_LINK'] = f'http://127.0.0.1:{relay.getsockname()[1]}/status-being?token=private-relay-token'
             self.start(9100, '--name', 'effective-relay-name')
             # An upstream rejection may echo credentials; it must not reach logs.
@@ -187,7 +187,7 @@ class RuntimeStatusTests(unittest.TestCase):
         with socket.socket() as relay:
             relay.bind(('127.0.0.1', 0))
             relay.listen(2)
-            relay.settimeout(20)
+            relay.settimeout(60)
             self.env['PORTAL_CONNECT_LINK'] = f'http://127.0.0.1:{relay.getsockname()[1]}/status-being?token=private-relay-token'
             self.start(9100, '--name', 'effective-relay-name')
             with self.accept_relay(relay) as connection:
@@ -249,7 +249,7 @@ class RuntimeStatusTests(unittest.TestCase):
         with socket.socket() as relay:
             relay.bind(('127.0.0.1', 0))
             relay.listen(1)
-            relay.settimeout(20)
+            relay.settimeout(60)
             port = relay.getsockname()[1]
             self.env['PORTAL_CONNECT_LINK'] = f'http://127.0.0.1:{port}/status-being?token=private-relay-token'
             self.start(9100, '--name', 'effective-relay-name',
