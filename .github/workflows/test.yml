@@ -27,27 +27,33 @@ jobs:
       - name: Rust tests (includes native Windows exec regressions)
         shell: bash
         run: |
-          # GitHub bash steps run with set -e -o pipefail by default:
-          # a failing cargo run would abort the script before annotations
-          # are emitted, so capture the exit status via `|| status=$?`.
+          # bash steps run with `set -e -o pipefail`. `cmd | tee || status=$?`
+          # only guards tee, NOT the pipeline: under errexit+pipefail a failing
+          # cargo aborts the script before any annotation code runs (runs
+          # 5/8/9 emitted zero ::error:: lines). Disable errexit around the
+          # pipeline and capture $? explicitly.
           out="$RUNNER_TEMP/test-output.txt"
-          status=0
-          cargo test --locked --no-fail-fast 2>&1 | tee "$out" || status=$?
+          set +e
+          cargo test --locked --no-fail-fast 2>&1 | tee "$out"
+          status=$?
+          set -e
           if [ "$status" -ne 0 ]; then
             set +e
             {
-              grep -E '^test .* \.\.\. FAILED' "$out" | head -8
-              grep -E '^thread .* panicked' "$out" | head -4
-              grep -E '^error(\[|:)' "$out" | head -10
+              grep -E '^(error|thread)' "$out" | head -5
+              echo '--- tail ---'
+              tail -n 10 "$out" | grep -v '^[[:space:]]*$'
             } | while IFS= read -r line; do
               [ -n "$line" ] && echo "::error::$line"
             done
             {
-              echo '### cargo test failures'
+              echo '### cargo test failures (exit '"$status"')'
               echo '```'
               grep -E '^test .* \.\.\. FAILED' "$out" | head -20
               grep -A 40 '^failures:' "$out" | head -80
-              grep -E '^error(\[|:)' "$out" | head -20
+              grep -E '^(error|thread)' "$out" | head -20
+              echo '--- last 100 lines ---'
+              tail -n 100 "$out"
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
             exit "$status"
