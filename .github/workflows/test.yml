@@ -27,19 +27,30 @@ jobs:
       - name: Rust tests (includes native Windows exec regressions)
         shell: bash
         run: |
-          set -o pipefail
-          cargo test --locked --no-fail-fast 2>&1 | tee "$RUNNER_TEMP/test-output.txt"
-          status=$?
+          # GitHub bash steps run with set -e -o pipefail by default:
+          # a failing cargo run would abort the script before annotations
+          # are emitted, so capture the exit status via `|| status=$?`.
           out="$RUNNER_TEMP/test-output.txt"
-          if [ $status -ne 0 ]; then
-            # Surface failing test names / errors as check-run annotations:
-            # logs are login-gated, annotations are readable anonymously.
-            ann=$( { grep -E '^test .* \.\.\. FAILED' "$out" | head -8; grep -E '^thread .* panicked' "$out" | head -2; } )
-            if [ -z "$ann" ]; then
-              ann=$(grep -E '^error' "$out" | head -10)
-            fi
-            echo "$ann" | while IFS= read -r line; do [ -n "$line" ] && echo "::error::$line"; done
-            exit $status
+          status=0
+          cargo test --locked --no-fail-fast 2>&1 | tee "$out" || status=$?
+          if [ "$status" -ne 0 ]; then
+            set +e
+            {
+              grep -E '^test .* \.\.\. FAILED' "$out" | head -8
+              grep -E '^thread .* panicked' "$out" | head -4
+              grep -E '^error(\[|:)' "$out" | head -10
+            } | while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error::$line"
+            done
+            {
+              echo '### cargo test failures'
+              echo '```'
+              grep -E '^test .* \.\.\. FAILED' "$out" | head -20
+              grep -A 40 '^failures:' "$out" | head -80
+              grep -E '^error(\[|:)' "$out" | head -20
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit "$status"
           fi
       - name: Build Portal
         run: cargo build --locked
