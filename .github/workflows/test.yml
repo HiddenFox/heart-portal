@@ -34,7 +34,7 @@ jobs:
           # pipeline and capture $? explicitly.
           out="$RUNNER_TEMP/test-output.txt"
           set +e
-          cargo test --locked --no-fail-fast 2>&1 | tee "$out"
+          cargo test --locked --no-fail-fast --color=never 2>&1 | tee "$out"
           status=$?
           set -e
           if [ "$status" -ne 0 ]; then
