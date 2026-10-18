@@ -12,7 +12,6 @@ use anyhow::{Context, Result};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::io;
-use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
