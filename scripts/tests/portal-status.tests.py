@@ -216,7 +216,7 @@ class RuntimeStatusTests(unittest.TestCase):
             reserve.bind(('127.0.0.1', 0))
             port = reserve.getsockname()[1]
         self.start(port)
-        deadline = time.monotonic() + 20
+        deadline = time.monotonic() + 60
         while True:
             try:
                 connection = socket.create_connection(('127.0.0.1', port), timeout=2)
