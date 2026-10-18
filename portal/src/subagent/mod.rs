@@ -2512,7 +2512,7 @@ mod tests {
     use super::*;
 
     fn temp_workspace(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("portal-sub-{tag}-{}", uuid::Uuid::new_v4()));
+        let dir = (if cfg!(unix) { PathBuf::from("/tmp") } else { std::env::temp_dir() }).join(format!("portal-sub-{tag}-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(dir.join("proj")).unwrap();
         dir
     }
